@@ -20,6 +20,7 @@ import com.jogamp.opengl.GLException;
 import com.jogamp.opengl.GLProfile;
 import com.jogamp.opengl.glu.GLU;
 import com.jogamp.opengl.util.GLBuffers;
+import com.robi.util.RandomUtil;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,7 +32,6 @@ public class GLUtil {
     private static GLUtil glUtil;
     private static GLProfile glProfile;
     private static GLCapabilities glCaps;
-    private static GLContext glCtx;
 
     public static synchronized GLUtil getInstance() {
         if (glUtil == null) {
@@ -52,44 +52,56 @@ public class GLUtil {
         return glUtil;
     }
 
-    public synchronized void render(int width, int height) throws Exception {
-        glCtx = makeGlCtx(width, height);
+    private static synchronized GLContext makeGlCtx(int width, int height) {
+        GLDrawableFactory glFactory = GLDrawableFactory.getDesktopFactory(); 
+        GLDrawable glDrawable = glFactory.createOffscreenDrawable(null, glCaps, new DefaultGLCapabilitiesChooser(), width, height);
+        glDrawable.setRealized(true);
 
-        // 2회차때 터짐. 로그 확인해볼 것.
-        // ctx를 render 시작시 얻고, 스샷찍은 후 release하는게 더 효율적일듯
-        // 매번 ctx 생성하는건 어쩔 수 없나?
+        GLContext rtGlCtx = glDrawable.createContext(null);
+        rtGlCtx.setContextCreationFlags(0);
 
+        try {
+            rtGlCtx.makeCurrent();
+        }
+        catch (GLException e) {
+            logger.error("Exception!", e);
+        }
+
+        return rtGlCtx;
+    }
+
+    public synchronized void render(File outFile, int width, int height) {
+        // init
+        final GLContext glCtx = makeGlCtx(width, height);
         final GL2 gl2 = glCtx.getGL().getGL2();
         GLU glu = new GLU();
+        
         gl2.glViewport(0, 0, width, height);
         gl2.glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
         gl2.glClear(GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT);
         gl2.glMatrixMode(GL2.GL_MODELVIEW);
         gl2.glLoadIdentity();
-        //glu.gluPerspective(90.0f, width / height, 1.0f, 2000.0f);
-        glu.gluOrtho2D( 0.0f, width, 0.0f, height );
         
-        gl2.glBegin( GL.GL_TRIANGLE_STRIP );
-        gl2.glColor3f(0.0f, 0.0f, 1.0f);
+        // camera
+        //glu.gluPerspective(90.0f, width / height, 1.0f, 2000.0f);
+        glu.gluOrtho2D((float)0.0f, width, 0.0f, (float)height);
+        gl2.glTranslatef(0.0f, 0.0f, 0.0f);
+        
+        // draw object
+        gl2.glPushMatrix();
+        gl2.glBegin(GL.GL_TRIANGLE_STRIP);
+        gl2.glColor3f(1.0f, 1.0f, 1.0f);
         gl2.glVertex2f(0.0f, 0.0f);
-        gl2.glColor3f(0.0f, 1.0f, 0.0f);
+        gl2.glColor3f(RandomUtil.genRandomFloat(), RandomUtil.genRandomFloat(), RandomUtil.genRandomFloat());
         gl2.glVertex2f(width, 0.0f);
-        gl2.glColor3f(1.0f, 0.0f, 0.0f);
+        gl2.glColor3f(RandomUtil.genRandomFloat(), RandomUtil.genRandomFloat(), RandomUtil.genRandomFloat());
         gl2.glVertex2f(0.0f, height);
         gl2.glColor3f(0.0f, 0.0f, 0.0f);
         gl2.glVertex2f(width, height);
+        gl2.glPopMatrix();
         gl2.glEnd();
-    }
 
-    public synchronized void screenShot() throws Exception {
-        if (glCtx == null) {
-            throw new Exception("OpenGL NOT initialized!");
-        }
-
-        final GLDrawable glDrawable = glCtx.getGLReadDrawable();
-        final GL2 gl2 = glCtx.getGL().getGL2();
-        final int width = glDrawable.getSurfaceWidth();
-        final int height = glDrawable.getSurfaceHeight();
+        // make screenshot
         BufferedImage bufImg = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
         Graphics graphics = bufImg.getGraphics();
         ByteBuffer byteBuf = GLBuffers.newDirectByteBuffer(width * height * 3);
@@ -106,41 +118,25 @@ public class GLUtil {
 
         byteBuf.clear();
         
-        File outImgFile = new File("/home/robi/desktop/Pictures/test.png");
-        
+        String outFileExt = null;
+
         try {
-            ImageIO.write(bufImg, "png", outImgFile);
+            String outFileName = outFile.getName();
+            outFileExt = outFileName.substring(outFileName.lastIndexOf(".") + 1, outFileName.length());
+        }
+        catch (IndexOutOfBoundsException e) {
+            logger.warn("Exception! 'outFileExt' will chagned to 'png' default.", e);
+            outFileExt = "png";
+        }
+
+        try {
+            ImageIO.write(bufImg, outFileExt, outFile);
         }
         catch (IOException e) {
             logger.error("Exception!", e);
         }
-    }
 
-    private synchronized GLContext makeGlCtx(int width, int height) {
-        if (glCtx != null) {
-            try {
-                glCtx.release();
-            }
-            catch (GLException e) {
-                logger.error("Exception!", e);
-            }
-            
-            glCtx = null;
-        }
-
-        GLDrawableFactory glFactory = GLDrawableFactory.getDesktopFactory(); 
-        GLDrawable glDrawable = glFactory.createOffscreenDrawable(null, glCaps, new DefaultGLCapabilitiesChooser(), width, height); 
-        glDrawable.setRealized(true);
-        glCtx = glDrawable.createContext(null);
-        glCtx.setContextCreationFlags(0);
-
-        try {
-            glCtx.makeCurrent();
-        }
-        catch (GLException e) {
-            logger.error("Exception!", e);
-        }
-
-        return glCtx;
+        // release
+        glCtx.release();
     }
 }
