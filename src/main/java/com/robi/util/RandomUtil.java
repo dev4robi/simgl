@@ -139,4 +139,12 @@ public class RandomUtil {
             return null;
         }
     }
+
+    /**
+     * <p>범위내(0.0f <= x < 1.0f)의 무작위 실수(float)을 반환합니다.</p>  
+     * @return 생성된 무작위 실수
+     */
+    public static float genRandomFloat() {
+        return RANDOM_GENERATOR.nextFloat();
+    }
 }
